@@ -549,6 +549,7 @@
               firebase.onSnapshot(userDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                   const fetchedData = docSnap.data();
+                  console.log('Data fetched from Firestore:', fetchedData); // Added logging
                   appData = {
                     ...appData,
                     ...fetchedData,
@@ -558,6 +559,7 @@
                     lastRead: fetchedData.lastRead || null,
                   };
                 } else {
+                  console.log('Firestore document does not exist, creating initial data.'); // Added logging
                   firebase.setDoc(userDocRef, appData).catch((e) =>
                     console.error('Error creating initial user document:', e)
                   );
@@ -674,6 +676,7 @@
 
       // --- Update Display Function ---
       function updateDisplay() {
+        console.log('updateDisplay called. Current appData:', { ...appData }); // Added logging here
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         document.getElementById("currentDate").textContent = `Today: ${new Date().toLocaleDateString(undefined, options)}`;
 
@@ -846,16 +849,22 @@
         const reward = REWARDS_LIST.find(r => r.id === rewardId);
         if (!reward) {
           showNotification('Reward not found!', 'error');
+          console.error('Attempted to buy non-existent reward:', rewardId);
           return;
         }
 
+        console.log(`Attempting to buy ${reward.name}. Current coins: ${appData.coins}, Cost: ${cost}`);
+        console.log('Current ownedRewards BEFORE purchase:', { ...appData.ownedRewards });
+
         if (appData.ownedRewards[rewardId]) {
           showNotification('You already own this reward!', 'error');
+          console.warn(`Attempted to buy already owned reward: ${reward.name}`);
           return;
         }
 
         if (appData.coins < cost) {
           showNotification('Not enough coins to buy this reward!', 'error');
+          console.warn(`Not enough coins to buy ${reward.name}. Needed: ${cost}, Have: ${appData.coins}`);
           return;
         }
 
@@ -863,18 +872,23 @@
         newData.coins -= cost;
         newData.ownedRewards = { ...newData.ownedRewards, [rewardId]: true };
 
+        console.log('New appData state BEFORE save:', { ...newData });
+
         try {
           if (userDocRef) {
             await firebase.setDoc(userDocRef, newData);
+            console.log('Data successfully saved to Firestore.');
           } else {
             localStorage.setItem('readifyData', JSON.stringify(newData));
             appData = newData; // Update global state for local storage
             updateDisplay();
+            console.log('Data successfully saved to Local Storage.');
           }
           if (purchaseSound) purchaseSound.triggerAttackRelease('E5', '16n');
           showNotification(`Successfully purchased ${reward.name}!`, 'success');
+          console.log('Current appData state AFTER successful purchase and save:', { ...appData });
         } catch (error) {
-          console.error('Error purchasing reward:', error);
+          console.error('Error purchasing reward and saving data:', error);
           showNotification('Failed to purchase reward. Please try again.', 'error');
         }
       }
