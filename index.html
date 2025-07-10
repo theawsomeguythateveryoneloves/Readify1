@@ -750,9 +750,7 @@
 
       // --- Core Logic: Log Reading ---
       async function handleLogReading(pagesRead) { // Removed event parameter, now takes pagesRead directly
-        // event.preventDefault(); // No longer needed as it's called programmatically
-
-        pagesError.classList.add('hidden'); // Hide any previous error
+        // pagesError.classList.add('hidden'); // Hide any previous error - this is handled by input listener now
 
         if (isNaN(pagesRead) || pagesRead <= 0 || pagesRead > 5000) {
           pagesError.textContent = 'Please enter a valid number of pages between 1 and 5000.';
@@ -955,7 +953,12 @@
       }
 
       // --- Event Listeners ---
-      readingLogForm.addEventListener("submit", (e) => handleLogReading(parseInt(pagesInput.value))); // Pass value directly
+      // Changed to use an async function to properly await handleLogReading
+      readingLogForm.addEventListener("submit", async (e) => {
+        e.preventDefault(); // Prevent default form submission
+        await handleLogReading(parseInt(pagesInput.value));
+      });
+
       pagesInput.addEventListener("input", () => {
         pagesInput.setAttribute('value', pagesInput.value); // Keep value attribute updated
         pagesError.classList.add('hidden'); // Hide error on input
@@ -987,7 +990,11 @@
       renderRewards(); 
 
       // Expose functions and data globally for simulation script
-      window.Readify.appData = appData; // Note: This will be the *initial* appData. Subsequent changes are via Firestore/updateDisplay.
+      // Changed to a getter to always return the latest appData
+      Object.defineProperty(window.Readify, 'appData', {
+        get: () => appData,
+        configurable: true // Allow re-defining if needed in other contexts
+      });
       window.Readify.handleLogReading = handleLogReading;
       window.Readify.handleBuyReward = handleBuyReward;
       window.Readify.resetStreakConfirmed = resetStreakConfirmed;
