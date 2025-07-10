@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Readify</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts - Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Firebase SDKs -->
+  <script type="module">
+    // Import Firebase modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Expose Firebase functions globally for use in the main script block.
+    // This is a common pattern in simple HTML files to avoid complex module bundling.
+    window.firebase = {
+      initializeApp,
+      getAuth,
+      signInAnonymously,
+      signInWithCustomToken,
+      onAuthStateChanged,
+      getFirestore,
+      doc,
+      setDoc,
+      onSnapshot
+    };
+  </script>
+  <!-- Tone.js for sound effects -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+
+  <style>
+    /* Custom styles for the notification message */
+    .notification-message {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #10b981; /* Green-500 */
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+      white-space: nowrap; /* Prevent wrapping for better appearance */
+      font-family: 'Inter', sans-serif;
+    }
+    .notification-message.show {
+      opacity: 1;
+    }
+
+    /* Keyframe animation for pulse effect on numbers */
+    @keyframes pulse-once {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    .animate-pulse-once {
+      animation: pulse-once 0.3s ease-out;
+    }
+
+    /* Styles for badge icons */
+    .badge-icon {
+      filter: grayscale(100%); /* Default: grayscale (not earned) */
+      transition: filter 0.5s ease-in-out, transform 0.3s ease-out, box-shadow 0.3s ease-out;
+      display: inline-block; /* Ensure transform works */
+      padding: 4px; /* Add padding for shadow */
+      border-radius: 8px; /* Rounded corners for the background */
+    }
+
+    .badge-icon.earned {
+      filter: grayscale(0%); /* Full color when earned */
+      box-shadow: 0 0 15px rgba(139, 92, 246, 0.6); /* Purple shadow */
+      transform: scale(1.05); /* Slightly larger when earned */
+    }
+
+    /* Keyframe animation for badge pop-in */
+    @keyframes badge-pop-in {
+      0% { transform: scale(0); opacity: 0; }
+      80% { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(1); }
+    }
+
+    .animate-badge-pop-in {
+      animation: badge-pop-in 0.5s ease-out;
+    }
+
+    /* Modal styles for badge celebration and reset confirmation */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      opacity: 0;
+      transition: opacity 0.3s ease-out;
+      visibility: hidden;
+      font-family: 'Inter', sans-serif;
+    }
+    .modal-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-content {
+      background-color: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      text-align: center;
+      transform: translateY(-20px);
+      opacity: 0;
+      transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+      max-width: 90%;
+      width: 400px;
+    }
+    .modal-overlay.show .modal-content {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Coin animation */
+    @keyframes coin-pop {
+      0% { transform: translateY(0) scale(1); opacity: 1; }
+      50% { transform: translateY(-20px) scale(1.2); opacity: 0.8; }
+      100% { transform: translateY(-40px) scale(0.8); opacity: 0; }
+    }
+
+    .coin-animated {
+      position: absolute;
+      font-size: 1.5rem;
+      animation: coin-pop 0.7s ease-out forwards;
+      pointer-events: none; /* Allow clicks to pass through */
+    }
+
+    /* Background pattern */
+    body {
+      background-image: radial-gradient(circle at 100% 150%, #f0f9ff, #dbeafe, #c7d2fe);
+      background-size: 400% 400%;
+      animation: gradientAnimation 15s ease infinite;
+      font-family: 'Inter', sans-serif;
+    }
+
+    @keyframes gradientAnimation {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Progress bar styling */
+    .progress-bar-container {
+      background-color: #e0e0e0;
+      border-radius: 9999px; /* Full rounded corners */
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      background-color: #8b5cf6; /* Purple-500 */
+      height: 100%;
+      width: 0%; /* Initial width */
+      border-radius: 9999px;
+      transition: width 0.5s ease-out;
+    }
+
+    /* Confetti effect */
+    .confetti {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background-color: #f0f; /* Example color */
+      opacity: 0;
+      animation: confetti-fall 2s ease-out forwards;
+    }
+
+    @keyframes confetti-fall {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* Loading spinner */
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-left-color: #8b5cf6;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-6 text-gray-800 bg-gradient-to-br from-purple-100 to-blue-100 font-inter">
+
+  <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-purple-200">
+    <h1 class="text-4xl font-extrabold text-center text-purple-800 mb-2 drop-shadow-sm">📚 Readify</h1>
+    <p class="text-sm text-center text-gray-600 mb-2">
+        Follow us on Instagram: 
+        <a href="https://www.instagram.com/readify18/" target="_blank" rel="noopener noreferrer" class="text-purple-600 hover:text-purple-800 font-semibold transition-colors">@readify18</a>
+    </p>
+    <p class="text-sm text-center text-gray-600 mb-6">
+        We also sell used books at cheap prices! Check our Instagram for details.
+    </p>
+    
+    <div class="text-center mb-6">
+      <p id="currentDate" class="text-sm text-gray-600 mb-2"></p>
+      <p class="text-2xl font-bold text-gray-800 inline-block mr-6">
+        Streak: <span id="streak" class="inline-block">0 🔥</span>
+      </p>
+      <p class="text-xl text-gray-700 inline-block">
+        Coins: <span id="coins" class="inline-block">0 🪙</span>
+      </p>
+      <p class="text-xl text-gray-700 inline-block ml-6">
+        Pages: <span id="total-pages" class="inline-block">0 📖</span>
+      </p>
+      <p id="motivationalMessage" class="text-sm text-purple-600 mt-2 font-medium"></p>
+    </div>
+
+    <!-- Progress Bar towards next badge -->
+    <div class="mb-6">
+      <p id="nextBadgeText" class="text-sm text-gray-600 mb-2 text-center">Loading...</p>
+      <div class="progress-bar-container">
+        <div id="progressBarFill" class="progress-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- ReadingLogForm -->
+    <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="p-2 bg-blue-100 rounded-lg">
+          <!-- Inline SVG for BookOpen icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 text-blue-600">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+        </div>
+        <h2 class="text-xl font-semibold text-gray-800">Log Today's Reading</h2>
+      </div>
+
+      <form id="readingLogForm" class="space-y-4">
+        <div>
+          <label for="pages" class="block text-sm font-medium text-gray-700 mb-2">
+            How many pages did you read today?
+          </label>
+          <input
+            type="number"
+            id="pages"
+            value=""
+            onchange="this.setAttribute('value', this.value);"
+            min="1"
+            max="5000"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+            placeholder="Enter number of pages"
+            required
+          />
+          <p id="pagesError" class="text-red-500 text-xs mt-1 hidden"></p>
+        </div>
+
+        <button
+          type="submit"
+          id="logProgressBtn"
+          class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+        >
+          <!-- Inline SVG for Plus icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+          Log Reading Progress
+        </button>
+      </form>
+    </div>
+
+    <div class="bg-purple-50 p-5 rounded-xl mb-4 border border-purple-200 mt-6">
+      <h2 class="text-lg font-bold mb-3 text-purple-700">🏆 Rewards:</h2>
+      <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+        <li>1 Coin per day</li>
+        <li>5-day streak: <span class="font-semibold">🥉 Bronze Badge</span></li>
+        <li>10-day streak: <span class="font-semibold">🥈 Silver Badge</span></li>
+        <li>30-day streak: <span class="font-semibold">🥇 Gold Badge</span></li>
+        <li>60-day streak: <span class="font-semibold">🏆 Platinum Badge</span></li>
+        <li>100-day streak: <span class="font-semibold">💎 Diamond Badge</span></li>
+        <li>365-day streak: <span class="font-semibold">🌟 Master Badge</span></li>
+      </ul>
+    </div>
+
+    <div class="bg-purple-50 p-5 rounded-xl border border-purple-200">
+        <h2 class="text-lg font-bold mb-3 text-purple-700">🏅 Your Badges:</h2>
+        <div class="grid grid-cols-3 gap-4 justify-items-center py-2">
+            <!-- Bronze Badge -->
+            <div class="text-center">
+                <span id="badgeBronze" class="badge-icon text-5xl" title="Bronze Badge (5-day streak)">
+                    🥉
+                </span>
+                <p class="text-xs text-gray-600 mt-1">Bronze</p>
+            </div>
+            <!-- Silver Badge -->
+            <div class="text-center">
+                <span id="badgeSilver" class="badge-icon text-5xl" title="Silver Badge (10-day streak)">
+                    🥈
+                </span>
+                <p class="text-xs text-gray-600 mt-1">Silver</p>
+            </div>
+            <!-- Gold Badge -->
+            <div class="text-center">
+                <span id="badgeGold" class="badge-icon text-5xl" title="Gold Badge (30-day streak)">
+                    🥇
+                </span>
+                <p class="text-xs text-gray-600 mt-1">Gold</p>
+            </div>
+            <!-- Platinum Badge -->
+            <div class="text-center">
+                <span id="badgePlatinum" class="badge-icon text-5xl" title="Platinum Badge (60-day streak)">
+                    🏆
+                </span>
+                <p class="text-xs text-gray-600 mt-1">Platinum</p>
+            </div>
+            <!-- Diamond Badge -->
+            <div class="text-center">
+                <span id="badgeDiamond" class="badge-icon text-5xl" title="Diamond Badge (100-day streak)">
+                    💎
+                </span>
+                <p class="text-xs text-gray-600 mt-1">Diamond</p>
+            </div>
+            <!-- Master Badge -->
+            <div class="text-center">
+                <span id="badgeMaster" class="badge-icon text-5xl" title="Master Badge (365-day streak)">
+                    🌟
+                </span>
+                <p class="text-xs text-gray-600 mt-1">Master</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rewards Store Section -->
+    <div class="bg-purple-50 p-5 rounded-xl border border-purple-200 mt-6">
+      <h2 class="text-lg font-bold mb-3 text-purple-700 flex items-center gap-2">
+        <!-- Inline SVG for ShoppingBag icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <path d="M16 10a4 4 0 0 1-8 0"></path>
+        </svg>
+        Rewards Store
+      </h2>
+      <div id="rewardsList" class="space-y-4">
+        <!-- Rewards will be dynamically loaded here by JavaScript -->
+      </div>
+    </div>
+
+    <button id="resetBtn" class="w-full mt-6 text-sm text-red-500 hover:text-red-700 transition">
+        Reset Streak & Coins
+    </button>
+  </div>
+
+  <!-- Custom notification message -->
+  <div id="notification" class="notification-message hidden"></div>
+
+  <!-- Badge Celebration Modal -->
+  <div id="badgeModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h3 id="modalTitle" class="text-3xl font-bold text-purple-700 mb-4"></h3>
+      <p id="modalMessage" class="text-gray-700 mb-5 text-lg"></p>
+      <span id="modalBadgeIcon" class="text-7xl mb-6 inline-block"></span>
+      <button id="modalCloseBtn" class="bg-purple-600 text-white py-2 px-8 rounded-xl hover:bg-purple-700 transition font-semibold text-lg shadow-md">
+        Awesome!
+      </button>
+    </div>
+  </div>
+
+  <!-- Reset Confirmation Modal -->
+  <div id="resetConfirmModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h3 class="text-2xl font-bold text-red-600 mb-4">Confirm Reset</h3>
+      <p class="text-gray-700 mb-6">Are you sure you want to reset your streak and coins? This action cannot be undone.</p>
+      <div class="flex justify-center space-x-4">
+        <button id="cancelResetBtn" class="bg-gray-300 text-gray-800 py-2 px-6 rounded-xl hover:bg-gray-400 transition font-semibold">
+          Cancel
+        </button>
+        <button id="confirmResetBtn" class="bg-red-600 text-white py-2 px-6 rounded-xl hover:bg-red-700 transition font-semibold">
+          Reset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="modal-overlay show">
+    <div class="flex flex-col items-center p-8 bg-white rounded-xl shadow-lg">
+      <div class="spinner mb-4"></div>
+      <p class="text-lg text-gray-700 font-semibold">Loading Readify...</p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      // --- Element References ---
+      const streakEl = document.getElementById("streak");
+      const coinsEl = document.getElementById("coins");
+      const totalPagesEl = document.getElementById("total-pages");
+      const motivationalMessageEl = document.getElementById("motivationalMessage");
+      const progressBarFill = document.getElementById("progressBarFill");
+      const nextBadgeText = document.getElementById("nextBadgeText");
+
+      const readingLogForm = document.getElementById("readingLogForm");
+      const pagesInput = document.getElementById("pages");
+      const pagesError = document.getElementById("pagesError");
+      const logProgressBtn = document.getElementById("logProgressBtn");
+
+      const badgeBronzeEl = document.getElementById("badgeBronze");
+      const badgeSilverEl = document.getElementById("badgeSilver");
+      const badgeGoldEl = document.getElementById("badgeGold");
+      const badgePlatinumEl = document.getElementById("badgePlatinum");
+      const badgeDiamondEl = document.getElementById("badgeDiamond");
+      const badgeMasterEl = document.getElementById("badgeMaster");
+
+      const rewardsListEl = document.getElementById("rewardsList");
+      const resetBtn = document.getElementById("resetBtn");
+      const notificationEl = document.getElementById("notification");
+      const loadingOverlay = document.getElementById("loadingOverlay");
+
+      // Modals
+      const badgeModal = document.getElementById("badgeModal");
+      const modalTitle = document.getElementById("modalTitle");
+      const modalMessage = document.getElementById("modalMessage");
+      const modalBadgeIcon = document.getElementById("modalBadgeIcon");
+      const modalCloseBtn = document.getElementById("modalCloseBtn");
+
+      const resetConfirmModal = document.getElementById("resetConfirmModal");
+      const cancelResetBtn = document.getElementById("cancelResetBtn");
+      const confirmResetBtn = document.getElementById("confirmResetBtn");
+
+      // --- Constants ---
+      const BADGE_THRESHOLDS = {
+        bronze: 5,
+        silver: 10,
+        gold: 30,
+        platinum: 60,
+        diamond: 100,
+        master: 365,
+      };
+
+      const REWARDS_LIST = [
+        { id: 'theme_purple_glow', name: 'Purple Glow Theme', cost: 50, description: 'A vibrant purple theme for your app.', emoji: '✨' },
+        { id: 'confetti_burst', name: 'Extra Confetti Burst', cost: 20, description: 'More confetti for your badge celebrations!', emoji: '🎉' },
+        { id: 'golden_coin_icon', name: 'Golden Coin Icon', cost: 100, description: 'Upgrade your coin icon to a shiny gold!', emoji: '💰' },
+        { id: 'motivation_boost', name: 'Daily Motivation Boost', cost: 30, description: 'Unlock exclusive daily motivational quotes.', emoji: '🚀' },
+      ];
+
+      // --- Global State ---
+      let appData = {
+        lastRead: null, // Tracks the last calendar day a log occurred for streak calculation
+        streak: 0,
+        coins: 0,
+        total_pages_read: 0,
+        badges: {
+          bronze: false,
+          silver: false,
+          gold: false,
+          platinum: false,
+          diamond: false,
+          master: false,
+        },
+        ownedRewards: {},
+      };
+
+      let userDocRef; // Firestore document reference
+      let coinSound;
+      let badgeSound;
+      let purchaseSound;
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // --- Sound Initialization ---
+      async function initSounds() {
+        try {
+          await Tone.start();
+          coinSound = new Tone.Synth().toDestination();
+          badgeSound = new Tone.Synth({
+            oscillator: { type: 'sine' },
+            envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 },
+            volume: -10,
+          }).toDestination();
+          purchaseSound = new Tone.Synth({
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.1 },
+            volume: -15,
+          }).toDestination();
+        } catch (error) {
+          console.error('Error initializing audio context or Tone.js:', error);
+        }
+      }
+
+      // --- Firebase Initialization and Data Loading ---
+      async function initFirebaseAndLoadData() {
+        try {
+          const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+          if (!firebaseConfig) {
+            console.warn('Firebase config is not available. Readify will use local storage only (data will not persist across devices).');
+            const localData = JSON.parse(localStorage.getItem('readifyData') || '{}');
+            appData = {
+              ...appData,
+              ...localData,
+              badges: { ...appData.badges, ...(localData.badges || {}) },
+              ownedRewards: { ...appData.ownedRewards, ...(localData.ownedRewards || {}) },
+              lastRead: localData.lastRead || null,
+            };
+            updateDisplay();
+            loadingOverlay.classList.remove('show');
+            loadingOverlay.classList.add('hidden');
+            return;
+          }
+
+          const app = firebase.initializeApp(firebaseConfig);
+          const auth = firebase.getAuth(app);
+          const db = firebase.getFirestore(app);
+
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await firebase.signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await firebase.signInAnonymously(auth);
+          }
+
+          firebase.onAuthStateChanged(auth, (user) => {
+            if (user) {
+              const userId = user.uid;
+              const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+              userDocRef = firebase.doc(db, `artifacts/${appId}/users/${userId}/readStreakData/current`);
+
+              firebase.onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                  const fetchedData = docSnap.data();
+                  appData = {
+                    ...appData,
+                    ...fetchedData,
+                    total_pages_read: fetchedData.total_pages_read || 0,
+                    badges: { ...appData.badges, ...(fetchedData.badges || {}) },
+                    ownedRewards: { ...appData.ownedRewards, ...(fetchedData.ownedRewards || {}) },
+                    lastRead: fetchedData.lastRead || null,
+                  };
+                } else {
+                  firebase.setDoc(userDocRef, appData).catch((e) =>
+                    console.error('Error creating initial user document:', e)
+                  );
+                }
+                updateDisplay();
+                loadingOverlay.classList.remove('show');
+                loadingOverlay.classList.add('hidden');
+              }, (error) => {
+                console.error('Error fetching data from Firestore:', error);
+                showNotification('Error loading data. Please check your connection.', 'error');
+                loadingOverlay.classList.remove('show');
+                loadingOverlay.classList.add('hidden');
+              });
+            } else {
+              console.log('No user signed in. Data persistence will not work.');
+              loadingOverlay.classList.remove('show');
+              loadingOverlay.classList.add('hidden');
+            }
+          });
+        } catch (error) {
+          console.error('Error during Firebase initialization or sign-in:', error);
+          showNotification('Failed to connect to Readify. Data may not be saved.', 'error');
+          const localData = JSON.parse(localStorage.getItem('readifyData') || '{}');
+          appData = {
+            ...appData,
+            ...localData,
+            badges: { ...appData.badges, ...(localData.badges || {}) },
+            ownedRewards: { ...appData.ownedRewards, ...(localData.ownedRewards || {}) },
+            lastRead: localData.lastRead || null,
+          };
+          updateDisplay();
+          loadingOverlay.classList.remove('show');
+          loadingOverlay.classList.add('hidden');
+        }
+      }
+
+      // --- Notification Management ---
+      function showNotification(message, type = 'error') {
+        notificationEl.textContent = message;
+        notificationEl.className = `notification-message show bg-green-500`; // Always green
+        notificationEl.classList.remove('hidden');
+
+        setTimeout(() => {
+          notificationEl.classList.remove('show');
+          setTimeout(() => notificationEl.classList.add('hidden'), 300);
+        }, 3000);
+      }
+
+      // --- Badge Modal Management ---
+      function showBadgeModal(title, message, icon) {
+        modalTitle.textContent = title;
+        modalMessage.textContent = message;
+        modalBadgeIcon.textContent = icon;
+        modalBadgeIcon.classList.add('animate-badge-pop-in');
+        badgeModal.classList.add('show');
+        badgeModal.classList.remove('hidden');
+        if (badgeSound) badgeSound.triggerAttackRelease('C5', '8n');
+        triggerConfetti();
+      }
+
+      function hideBadgeModal() {
+        badgeModal.classList.remove('show');
+        badgeModal.classList.add('hidden');
+        modalBadgeIcon.classList.remove('animate-badge-pop-in');
+      }
+
+      // --- Reset Confirmation Modal Management ---
+      function showResetConfirmModal() {
+        resetConfirmModal.classList.add('show');
+        resetConfirmModal.classList.remove('hidden');
+      }
+
+      function hideResetConfirmModal() {
+        resetConfirmModal.classList.remove('show');
+        resetConfirmModal.classList.add('hidden');
+      }
+
+      // --- Animations ---
+      function animateCoin() {
+        const coinIcon = document.createElement('span');
+        coinIcon.textContent = '🪙';
+        coinIcon.className = 'coin-animated';
+
+        const coinsRect = coinsEl.getBoundingClientRect();
+        coinIcon.style.left = `${coinsRect.left + coinsRect.width / 2}px`;
+        coinIcon.style.top = `${coinsRect.top}px`;
+
+        document.body.appendChild(coinIcon);
+
+        coinIcon.addEventListener('animationend', () => {
+          coinIcon.remove();
+        });
+        if (coinSound) coinSound.triggerAttackRelease('C4', '16n');
+      }
+
+      function triggerConfetti() {
+        const colors = ['#f0f', '#0ff', '#ff0', '#f00', '#0f0', '#00f', '#8b5cf6', '#a78bfa', '#c4b5fd'];
+        const numConfetti = 50;
+        for (let i = 0; i < numConfetti; i++) {
+          const confetti = document.createElement('div');
+          confetti.className = 'confetti';
+          confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+          confetti.style.left = `${Math.random() * 100}vw`;
+          confetti.style.top = `${Math.random() * -50}px`;
+          confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
+          confetti.style.animationDelay = `${Math.random() * 0.5}s`;
+          document.body.appendChild(confetti);
+
+          confetti.addEventListener('animationend', () => {
+            confetti.remove();
+          });
+        }
+      }
+
+      // --- Update Display Function ---
+      function updateDisplay() {
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById("currentDate").textContent = `Today: ${new Date().toLocaleDateString(undefined, options)}`;
+
+        streakEl.textContent = `${appData.streak} 🔥`;
+        streakEl.classList.remove('animate-pulse-once');
+        void streakEl.offsetWidth; // Trigger reflow
+        streakEl.classList.add('animate-pulse-once');
+
+        coinsEl.textContent = `${appData.coins} 🪙`;
+        coinsEl.classList.remove('animate-pulse-once');
+        void coinsEl.offsetWidth; // Trigger reflow
+        coinsEl.classList.add('animate-pulse-once');
+
+        totalPagesEl.textContent = `${appData.total_pages_read} 📖`;
+        totalPagesEl.classList.remove('animate-pulse-once');
+        void totalPagesEl.offsetWidth; // Trigger reflow
+        totalPagesEl.classList.add('animate-pulse-once');
+
+        badgeBronzeEl.classList.toggle('earned', appData.badges.bronze);
+        badgeSilverEl.classList.toggle('earned', appData.badges.silver);
+        badgeGoldEl.classList.toggle('earned', appData.badges.gold);
+        badgePlatinumEl.classList.toggle('earned', appData.badges.platinum);
+        badgeDiamondEl.classList.toggle('earned', appData.badges.diamond);
+        badgeMasterEl.classList.toggle('earned', appData.badges.master);
+
+        let nextThreshold = 0;
+        let currentProgress = appData.streak;
+        let badgeName = '';
+        let message = '';
+
+        if (!appData.badges.bronze) {
+          nextThreshold = BADGE_THRESHOLDS.bronze;
+          badgeName = 'Bronze Badge';
+          message = `Keep going! You're ${Math.max(0, nextThreshold - currentProgress)} days away from your Bronze Badge!`;
+        } else if (!appData.badges.silver) {
+          nextThreshold = BADGE_THRESHOLDS.silver;
+          badgeName = 'Silver Badge';
+          message = `Fantastic! Only ${Math.max(0, nextThreshold - currentProgress)} more days for your Silver Badge!`;
+        } else if (!appData.badges.gold) {
+          nextThreshold = BADGE_THRESHOLDS.gold;
+          badgeName = 'Gold Badge';
+          message = `Almost there! Just ${Math.max(0, nextThreshold - currentProgress)} days until the Gold Badge!`;
+        } else if (!appData.badges.platinum) {
+          nextThreshold = BADGE_THRESHOLDS.platinum;
+          badgeName = 'Platinum Badge';
+          message = `You're on fire! Only ${Math.max(0, nextThreshold - currentProgress)} days until Platinum!`;
+        } else if (!appData.badges.diamond) {
+          nextThreshold = BADGE_THRESHOLDS.diamond;
+          badgeName = 'Diamond Badge';
+          message = `Unstoppable! Just ${Math.max(0, nextThreshold - currentProgress)} days for your Diamond Badge!`;
+        } else if (!appData.badges.master) {
+          nextThreshold = BADGE_THRESHOLDS.master;
+          badgeName = 'Master Badge';
+          message = `Legendary! Only ${Math.max(0, nextThreshold - currentProgress)} days until the Master Badge!`;
+        } else {
+          nextThreshold = appData.streak > 0 ? appData.streak : 1;
+          currentProgress = appData.streak;
+          badgeName = 'All Badges Earned!';
+          message = 'You\'ve earned all badges! Keep up the amazing work!';
+        }
+        motivationalMessageEl.textContent = message;
+
+        if (nextThreshold > 0) {
+          const percentage = (currentProgress / nextThreshold) * 100;
+          progressBarFill.style.width = `${Math.min(100, percentage)}%`;
+          nextBadgeText.textContent = `Next: ${badgeName}`;
+        } else {
+          progressBarFill.style.width = '0%';
+          nextBadgeText.textContent = "Start your streak today!";
+        }
+
+        renderRewards(); // Re-render rewards to update "Buy" / "Owned" state
+      }
+
+      // --- Core Logic: Log Reading ---
+      async function handleLogReading(event) {
+        event.preventDefault(); // Prevent default form submission
+
+        const pagesRead = parseInt(pagesInput.value);
+        pagesError.classList.add('hidden'); // Hide any previous error
+
+        if (isNaN(pagesRead) || pagesRead <= 0 || pagesRead > 5000) {
+          pagesError.textContent = 'Please enter a valid number of pages between 1 and 5000.';
+          pagesError.classList.remove('hidden');
+          return;
+        }
+
+        const newData = { ...appData };
+        const lastLoggedDate = appData.lastRead;
+        const currentDay = today;
+
+        // Only update streak and lastRead if it's a new day of logging
+        if (lastLoggedDate !== currentDay) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+          if (lastLoggedDate === yesterdayStr) {
+            newData.streak += 1;
+          } else {
+            newData.streak = 1; // Streak broken or new streak started
+          }
+          newData.lastRead = currentDay; // Update lastRead only on the first log of the day
+        }
+
+        newData.coins += 1;
+        animateCoin();
+
+        newData.total_pages_read = (newData.total_pages_read || 0) + pagesRead;
+
+        let badgeEarnedThisClick = false;
+
+        if (newData.streak >= BADGE_THRESHOLDS.bronze && !newData.badges.bronze) {
+          newData.badges.bronze = true;
+          showBadgeModal('Bronze Badge Unlocked!', 'Congratulations! You\'ve achieved a 5-day streak!', '🥉');
+          badgeEarnedThisClick = true;
+        }
+        if (newData.streak >= BADGE_THRESHOLDS.silver && !newData.badges.silver) {
+          newData.badges.silver = true;
+          showBadgeModal('Silver Badge Unlocked!', 'Amazing! You\'ve reached a 10-day streak!', '🥈');
+          badgeEarnedThisClick = true;
+        }
+        if (newData.streak >= BADGE_THRESHOLDS.gold && !newData.badges.gold) {
+          newData.badges.gold = true;
+          showBadgeModal('Gold Badge Unlocked!', 'Incredible! You\'ve hit a 30-day streak!', '🥇');
+          badgeEarnedThisClick = true;
+        }
+        if (newData.streak >= BADGE_THRESHOLDS.platinum && !newData.badges.platinum) {
+          newData.badges.platinum = true;
+          showBadgeModal('Platinum Badge Unlocked!', 'You\'re a reading machine! 60-day streak!', '🏆');
+          badgeEarnedThisClick = true;
+        }
+        if (newData.streak >= BADGE_THRESHOLDS.diamond && !newData.badges.diamond) {
+          newData.badges.diamond = true;
+          showBadgeModal('Diamond Badge Unlocked!', 'Simply brilliant! 100-day streak achieved!', '💎');
+          badgeEarnedThisClick = true;
+        }
+        if (newData.streak >= BADGE_THRESHOLDS.master && !newData.badges.master) {
+          newData.badges.master = true;
+          showBadgeModal('Master Badge Unlocked!', 'A true reading master! One year streak!', '🌟');
+          badgeEarnedThisClick = true;
+        }
+
+        try {
+          if (userDocRef) {
+            await firebase.setDoc(userDocRef, newData);
+          } else {
+            localStorage.setItem('readifyData', JSON.stringify(newData));
+            appData = newData; // Update global state for local storage
+            updateDisplay();
+          }
+
+          if (!badgeEarnedThisClick) {
+            showNotification('Reading progress logged! Keep up the streak!', 'success');
+          }
+          pagesInput.value = ''; // Clear input after successful log
+          pagesInput.setAttribute('value', ''); // Update attribute for persistence
+        } catch (error) {
+          console.error('Error saving data:', error);
+          showNotification('Failed to save data. Please check your connection.', 'error');
+        }
+      }
+
+      // --- Core Logic: Buy Reward ---
+      async function handleBuyReward(rewardId, cost) {
+        const reward = REWARDS_LIST.find(r => r.id === rewardId);
+        if (!reward) {
+          showNotification('Reward not found!', 'error');
+          return;
+        }
+
+        if (appData.ownedRewards[rewardId]) {
+          showNotification('You already own this reward!', 'error');
+          return;
+        }
+
+        if (appData.coins < cost) {
+          showNotification('Not enough coins to buy this reward!', 'error');
+          return;
+        }
+
+        const newData = { ...appData };
+        newData.coins -= cost;
+        newData.ownedRewards = { ...newData.ownedRewards, [rewardId]: true };
+
+        try {
+          if (userDocRef) {
+            await firebase.setDoc(userDocRef, newData);
+          } else {
+            localStorage.setItem('readifyData', JSON.stringify(newData));
+            appData = newData; // Update global state for local storage
+            updateDisplay();
+          }
+          if (purchaseSound) purchaseSound.triggerAttackRelease('E5', '16n');
+          showNotification(`Successfully purchased ${reward.name}!`, 'success');
+        } catch (error) {
+          console.error('Error purchasing reward:', error);
+          showNotification('Failed to purchase reward. Please try again.', 'error');
+        }
+      }
+
+      // --- Render Rewards List ---
+      function renderRewards() {
+        rewardsListEl.innerHTML = ''; // Clear existing rewards
+        REWARDS_LIST.forEach(reward => {
+          const rewardDiv = document.createElement('div');
+          rewardDiv.className = "flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100";
+          
+          const isOwned = appData.ownedRewards[reward.id];
+          const canAfford = appData.coins >= reward.cost;
+
+          rewardDiv.innerHTML = `
+            <div>
+              <p class="font-semibold text-gray-800">${reward.emoji} ${reward.name}</p>
+              <p class="text-sm text-gray-600">${reward.description}</p>
+              <p class="text-xs text-gray-500 mt-1">Cost: ${reward.cost} 🪙</p>
+            </div>
+            ${isOwned ? `
+              <span class="text-green-600 font-bold text-sm">Owned!</span>
+            ` : `
+              <button
+                id="buy-${reward.id}"
+                class="bg-blue-500 text-white text-sm px-4 py-2 rounded-lg ${!canAfford ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'} transition-colors font-medium"
+                ${!canAfford ? 'disabled' : ''}
+              >
+                Buy
+              </button>
+            `}
+          `;
+          rewardsListEl.appendChild(rewardDiv);
+
+          // Add event listener to the buy button if not owned
+          if (!isOwned) {
+            const buyButton = document.getElementById(`buy-${reward.id}`);
+            if (buyButton) {
+              buyButton.addEventListener('click', () => handleBuyReward(reward.id, reward.cost));
+            }
+          }
+        });
+      }
+
+      // --- Core Logic: Reset Streak ---
+      async function resetStreakConfirmed() {
+          const resetData = {
+              lastRead: null,
+              streak: 0,
+              coins: 0,
+              total_pages_read: 0,
+              badges: {
+                  bronze: false,
+                  silver: false,
+                  gold: false,
+                  platinum: false,
+                  diamond: false,
+                  master: false
+              },
+              ownedRewards: {},
+          };
+          try {
+              if (userDocRef) {
+                  await firebase.setDoc(userDocRef, resetData);
+              } else {
+                  localStorage.setItem('readifyData', JSON.stringify(resetData));
+                  appData = resetData; // Update global state for local storage
+                  updateDisplay();
+              }
+              showNotification('Streak and coins have been reset!', 'success');
+              hideResetConfirmModal(); // Hide modal after reset
+          } catch (error) {
+              console.error('Error resetting data:', error);
+              showNotification('Failed to reset data. Please try again.', 'error');
+          }
+      }
+
+      // --- Event Listeners ---
+      readingLogForm.addEventListener("submit", handleLogReading);
+      pagesInput.addEventListener("input", () => {
+        pagesInput.setAttribute('value', pagesInput.value); // Keep value attribute updated
+        pagesError.classList.add('hidden'); // Hide error on input
+        const pageCount = parseInt(pagesInput.value);
+        logProgressBtn.disabled = isNaN(pageCount) || pageCount <= 0 || pageCount > 5000;
+      });
+      logProgressBtn.disabled = true; // Initially disable the button
+
+      modalCloseBtn.addEventListener('click', hideBadgeModal);
+      badgeModal.addEventListener('click', (e) => {
+          if (e.target === badgeModal) { 
+              hideBadgeModal();
+          }
+      });
+
+      resetBtn.addEventListener("click", showResetConfirmModal);
+      cancelResetBtn.addEventListener('click', hideResetConfirmModal);
+      confirmResetBtn.addEventListener('click', resetStreakConfirmed);
+      resetConfirmModal.addEventListener('click', (e) => {
+          if (e.target === resetConfirmModal) { 
+              hideResetConfirmModal();
+          }
+      });
+
+      // --- Initial Setup ---
+      initSounds();
+      initFirebaseAndLoadData();
+      // Initial render of rewards (will be updated by Firebase listener)
+      renderRewards(); 
+    });
+  </script>
+
+</body>
+</html>
