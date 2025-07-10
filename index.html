@@ -289,7 +289,7 @@
     <div class="bg-purple-50 p-5 rounded-xl mb-4 border border-purple-200 mt-6">
       <h2 class="text-lg font-bold mb-3 text-purple-700">🏆 Rewards:</h2>
       <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
-        <li>1 Coin per 50 pages read</li>
+        <li>1 Coin per 25 pages read</li>
         <li>5-day streak: <span class="font-semibold">🥉 Bronze Badge</span></li>
         <li>10-day streak: <span class="font-semibold">🥈 Silver Badge</span></li>
         <li>30-day streak: <span class="font-semibold">🥇 Gold Badge</span></li>
@@ -638,7 +638,7 @@
       // --- Animations ---
       function animateCoin() {
         const coinIcon = document.createElement('span');
-        coinIcon.textContent = '🪙';
+        coinIcon.textContent = '�';
         coinIcon.className = 'coin-animated';
 
         const coinsRect = coinsEl.getBoundingClientRect();
@@ -778,7 +778,7 @@
         }
 
         // Calculate coins based on pages read
-        const coinsEarned = Math.floor(pagesRead / 50);
+        const coinsEarned = Math.floor(pagesRead / 25); // Changed from 50 to 25
         newData.coins += coinsEarned;
 
         // Trigger coin animation for each coin earned
@@ -946,7 +946,8 @@
               }
               showNotification('Streak and coins have been reset!', 'success');
               hideResetConfirmModal(); // Hide modal after reset
-          } catch (error) {
+          }
+           catch (error) {
               console.error('Error resetting data:', error);
               showNotification('Failed to reset data. Please try again.', 'error');
           }
